@@ -28,6 +28,7 @@ class Commands(object):
             open=dict(obj=self.cmd_open, description="Open a file"),
             close=dict(obj=self.cmd_close, description="Close the current session"),
             info=dict(obj=self.cmd_info, description="Show information on the opened file"),
+            notes=dict(obj=self.cmd_notes, description="View, add and edit notes on the opened file"),
             clear=dict(obj=self.cmd_clear, description="Clear the console"),
             store=dict(obj=self.cmd_store, description="Store the opened file to the local repository"),
             delete=dict(obj=self.cmd_delete, description="Delete the opened file"),
@@ -89,7 +90,7 @@ class Commands(object):
             print("\t--help (-h)\tShow this help message")
             print("\t--file (-f)\tThe target is a file")
             print("\t--url (-u)\tThe target is a URL")
-            print("\t--last (-l)\tOpen file from the results of the last find command")
+            print("\t--last (-l)\tThe target is the entry number from the last find command's results")
             print("\t--tor (-t)\tDownload the file through Tor")
             print("")
             print("You can also specify a MD5 or SHA256 hash to a previously stored")
@@ -218,6 +219,132 @@ class Commands(object):
             ))
 
     ##
+    # NOTES
+    #
+    # This command allows you to view, add, modify and delete notes associated
+    # with the currently opened file.
+    def cmd_notes(self, *args):
+        def usage():
+            print("usage: notes [-h] [-l] [-a] [-e <note id>] [-d <note id>]")
+
+        def help():
+            usage()
+            print("")
+            print("Options:")
+            print("\t--help (-h)\tShow this help message")
+            print("\t--list (-l)\tList all notes available for the current file")
+            print("\t--add (-a)\tAdd a new note to the current file")
+            print("\t--view (-v)\tView the specified note")
+            print("\t--edit (-e)\tEdit an existing note")
+            print("\t--delete (-d)\tDelete an existing note")
+            print("")
+
+        try:
+            opts, argv = getopt.getopt(args, 'hlav:e:d:', ['help', 'list', 'add', 'view=', 'edit=', 'delete='])
+        except getopt.GetoptError as e:
+            print(e)
+            usage()
+            return
+
+        arg_list = False
+        arg_add = False
+        arg_view = None
+        arg_edit = None
+        arg_delete = None
+
+        for opt, value in opts:
+            if opt in ('-h', '--help'):
+                help()
+                return
+            elif opt in ('-l', '--list'):
+                arg_list = True
+            elif opt in ('-a', '--add'):
+                arg_add = True
+            elif opt in ('-v', '--view'):
+                arg_view = value
+            elif opt in ('-e', '--edit'):
+                arg_edit = value
+            elif opt in ('-d', '--delete'):
+                arg_delete = value
+
+        if not __sessions__.is_set():
+            print_error("No session opened")
+            return
+
+        if arg_list:
+            # Retrieve all notes for the currently opened file.
+            malware = Database().find(key='sha256', value=__sessions__.current.file.sha256)
+            if not malware:
+                print_error("The opened file doesn't appear to be in the database, have you stored it yet?")
+                return
+
+            notes = malware[0].note
+            if not notes:
+                print_info("No notes available for this file yet")
+                return
+
+            # Populate table rows.
+            rows = []
+            for note in notes:
+                rows.append([note.id, note.title])
+
+            # Display list of existing notes.
+            print(table(header=['ID', 'Title'], rows=rows))
+
+        elif arg_add:
+            title = raw_input("Enter a title for the new note: ")
+
+            # Create a new temporary file.
+            tmp = tempfile.NamedTemporaryFile(delete=False)
+            # Open the temporary file with the default editor, or with nano.
+            os.system('"${EDITOR:-nano}" ' + tmp.name)
+            # Once the user is done editing, we need to read the content and
+            # store it in the database.
+            body = tmp.read()
+            Database().add_note(__sessions__.current.file.sha256, title, body)
+            # Finally, remove the temporary file.
+            os.remove(tmp.name)
+
+            print_info("New note with title \"{0}\" added to the current file".format(bold(title)))
+
+        elif arg_view:
+            # Retrieve note wth the specified ID and print it.
+            note = Database().get_note(arg_view)
+            if note:
+                print_info(bold('Title: ') + note.title)
+                print_info(bold('Body:'))
+                print(note.body)
+            else:
+                print_info("There is no note with ID {0}".format(arg_view))
+
+
+        elif arg_edit:
+            # Retrieve note with the specified ID.
+            note = Database().get_note(arg_edit)
+            if note:
+                # Create a new temporary file.
+                tmp = tempfile.NamedTemporaryFile(delete=False)
+                # Write the old body to the temporary file.
+                tmp.write(note.body)
+                tmp.close()
+                # Open the old body with the text editor.
+                os.system('"${EDITOR:-nano}" ' + tmp.name)
+                # Read the new body from the temporary file.
+                body = open(tmp.name, 'r').read()
+                # Update the note entry with the new body.
+                Database().edit_note(arg_edit, body)
+                # Remove the temporary file.
+                os.remove(tmp.name)
+
+                print_info("Updated note with ID {0}".format(arg_edit))
+
+        elif arg_delete:
+            # Delete the note with the specified ID.
+            Database().delete_note(arg_delete)
+        else:
+            usage()
+
+    ##
     # STORE
     #
     # This command stores the opened file in the local repository and tries
@@ -306,7 +433,7 @@ class Commands(object):
 
                         if not os.path.exists(file_path):
                             continue
-                        # Check if file is not zero
+                        # Check if file is not zero.
                         if not os.path.getsize(file_path) > 0:
                             continue
                         
@@ -338,6 +465,10 @@ class Commands(object):
         # Otherwise we try to store the currently opened file, if there is any.
         else:
             if __sessions__.is_set():
+                if __sessions__.current.file.size == 0:
+                    print_warning("Skip, file \"{0}\" appears to be empty".format(__sessions__.current.file.name))
+                    return False
+
                 # Add file.
                 if add_file(__sessions__.current.file, arg_tags):
                     # Open session to the new file.
@@ -378,7 +509,7 @@ class Commands(object):
     # This command is used to search for files in the database.
     def cmd_find(self, *args):
         def usage():
-            print("usage: find [-h] [-t] <all|latest|name|md5|sha256|tag> <value>")
+            print("usage: find [-h] [-t] <all|latest|name|type|mime|md5|sha256|tag|note> <value>")
 
         def help():
             usage()
@@ -516,6 +647,8 @@ class Commands(object):
             usage()
             return
 
+        # TODO: handle situation where addition or deletion of a tag fail.
+
         if arg_add:
             # Add specified tags to the database's entry belonging to
             # the opened file.
@@ -531,8 +664,12 @@ class Commands(object):
             __sessions__.new(__sessions__.current.file.path)
 
         if arg_delete:
-            # TODO
-            pass
+            # Delete the tag from the database.
+            Database().delete_tag(arg_delete)
+            # Refresh the session so that the attributes of the file are
+            # updated.
+            print_info("Refreshing session to update attributes...")
+            __sessions__.new(__sessions__.current.file.path)
 
     ###
     # SESSION
@@ -610,7 +747,7 @@ class Commands(object):
     # You can also switch to a different project.
     def cmd_projects(self, *args):
         def usage():
-            print("usage: project [-h] [-l] [-s=project]")
+            print("usage: projects [-h] [-l] [-s=project]")
 
         def help():
             usage()
