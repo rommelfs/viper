@@ -83,6 +83,17 @@ class Console(object):
 
         # Setup shell auto-complete.
         def complete(text, state):
+            # Try to autocomplete commands.
+            cmds = [i for i in self.cmd.commands if i.startswith(text)]
+            if state < len(cmds):
+                return cmds[state]
+
+            # Try to autocomplete modules.
+            mods = [i for i in __modules__ if i.startswith(text)]
+            if state < len(mods):
+                return mods[state]
+
+            # Then autocomplete paths.
             return (glob.glob(text+'*')+[None])[state]
 
         # Auto-complete on tabs.
@@ -122,10 +133,10 @@ class Console(object):
                 prefix = bold(cyan(__project__.name)) + ' '
 
             if __sessions__.is_set():
-                prompt = prefix + cyan('shell ') + white(__sessions__.current.file.name) + cyan(' > ')
+                prompt = prefix + cyan('viper ') + white(__sessions__.current.file.name) + cyan(' > ')
             # Otherwise display the basic prompt.
             else:
-                prompt = prefix + cyan('shell > ')
+                prompt = prefix + cyan('viper > ')
 
             # Wait for input from the user.
             try:

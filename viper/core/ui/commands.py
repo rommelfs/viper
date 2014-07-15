@@ -589,7 +589,11 @@ class Commands(object):
                         tag = tag + t.tag
                     else:
                         tag = tag + ", " + t.tag
-            rows.append([count, item.name, item.mime, item.md5, tag])
+            row = [count, item.name, item.mime, item.md5, tag]
+            if key == 'latest':
+                row.append(item.created_at)
+
+            rows.append(row)
             count += 1
             tag = ""
 
@@ -597,7 +601,11 @@ class Commands(object):
         __sessions__.find = items
 
         # Generate a table with the results.
-        print(table(['#', 'Name', 'Mime', 'MD5', 'Tags'], rows))
+        header = ['#', 'Name', 'Mime', 'MD5', 'Tags']
+        if key == 'latest':
+            header.append('Created At')
+
+        print(table(header=header, rows=rows))
 
     ##
     # TAGS
