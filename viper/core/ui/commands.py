@@ -6,6 +6,8 @@ import time
 import getopt
 import fnmatch
 import tempfile
+import shutil
+from zipfile import ZipFile
 
 from viper.common.out import *
 from viper.common.objects import File
@@ -36,6 +38,7 @@ class Commands(object):
             tags=dict(obj=self.cmd_tags, description="Modify tags of the opened file"),
             sessions=dict(obj=self.cmd_sessions, description="List or switch sessions"),
             projects=dict(obj=self.cmd_projects, description="List or switch existing projects"),
+            export=dict(obj=self.cmd_export, description="Export the current session to file or zip"),
         )
 
     ##
@@ -59,7 +62,7 @@ class Commands(object):
 
         rows = sorted(rows, key=lambda entry: entry[0])
 
-        print(table(['Command', 'Description'], rows))       
+        print(table(['Command', 'Description'], rows))
         print("")
         print(bold("Modules:"))
 
@@ -436,7 +439,7 @@ class Commands(object):
                         # Check if file is not zero.
                         if not os.path.getsize(file_path) > 0:
                             continue
-                        
+
                         # Check if the file name matches the provided pattern.
                         if arg_file_name:
                             if not fnmatch.fnmatch(file_name, arg_file_name):
@@ -792,7 +795,7 @@ class Commands(object):
             return
 
         if arg_list:
-            print_info("Projects Available:")            
+            print_info("Projects Available:")
 
             rows = []
             for project in os.listdir(projects_path):
@@ -818,3 +821,71 @@ class Commands(object):
             return
 
         usage()
+
+    ##
+    # EXPORT
+    #
+    # This command will export the current session to file or zip.
+    def cmd_export(self, *args):
+        def usage():
+            print("usage: export [-h] [-z] <path or archive name>")
+
+        def help():
+            usage()
+            print("")
+            print("Options:")
+            print("\t--help (-h)\tShow this help message")
+            print("\t--zip (-z)\tExport session in a zip archive")
+            print("")
+
+        try:
+            opts, argv = getopt.getopt(args, 'hz', ['help', 'zip'])
+        except getopt.GetoptError as e:
+            print(e)
+            usage()
+            return
+
+        arg_zip = False
+
+        for opt, value in opts:
+            if opt in ('-h', '--help'):
+                help()
+                return
+            elif opt in ('-z', '--zip'):
+                arg_zip = True
+
+        # Check for valid export path.
+        if len(args) ==0:
+            usage()
+            return
+
+        # TODO: having for one a folder and for the other a full
+        # target path can be confusing. We should perhaps standardize this.
+
+        # Abort if the specified path already exists.
+        if os.path.isfile(argv[0]):
+            print_error("File at path \"{0}\" already exists, abort".format(argv[0]))
+            return
+
+        # If the argument chosed so, archive the file when exporting it.
+        # TODO: perhaps add an option to use a password for the archive
+        # and default it to "infected".
+        if arg_zip:
+            try:
+                with ZipFile(argv[0], 'w') as export_zip:
+                    export_zip.write(__sessions__.current.file.path, arcname=__sessions__.current.file.name)
+            except IOError as e:
+                print_error("Unable to export file: {0}".format(e))
+            else:
+                print_info("File archived and exported to {0}".format(argv[0]))
+        # Otherwise just dump it to the given directory.
+        else:
+            # XXX: Export file with the original file name.
+            store_path = os.path.join(argv[0], __sessions__.current.file.name)
+
+            try:
+                shutil.copyfile(__sessions__.current.file.path, store_path)
+            except IOError as e:
+                print_error("Unable to export file: {0}".format(e))
+            else:
+                print_info("File exported to {0}".format(store_path))

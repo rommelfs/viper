@@ -27,7 +27,7 @@ except ImportError:
 
 class Office(Module):
     cmd = 'office'
-    description = 'Office OLE Parser'
+    description = 'Office Document Parser'
     authors = ['Kevin Breen', 'nex']
 
     ##
@@ -223,7 +223,7 @@ class Office(Module):
 
         # Put it all together.
         rows = [
-            ['Summery Information', has_summary],
+            ['Summary Information', has_summary],
             ['Word', is_word],
             ['Excel', is_excel],
             ['PowerPoint', is_ppt],
@@ -330,9 +330,9 @@ class Office(Module):
             print("Options:")
             print("\t--help (-h)\tShow this help message")
             print("\t--meta (-m)\tGet The Metadata")
-            print("\t--struct (-s)\tShow The OLE Structure")
+            print("\t--struct (-s)\tShow The Document Structure")
             print("\t--oleid (-o)\tGet The OLE Information")
-            print("\t--export (-e)\tExport OLE Objects (specify destination folder)")
+            print("\t--export (-e)\tExport All Objects (specify destination folder)")
             print("")
 
 
